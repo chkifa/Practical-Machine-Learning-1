@@ -1,0 +1,155 @@
+---
+title: "Practical Machine Learning Course Project: Human Activity Recognition (HAR) data analysis and classification."
+author: "Michela Ieva"
+date: "Friday, April 24, 2015"
+output: html_document
+---
+
+## Abstract
+We propose an analysis of Human Activity Recognition (HAR) data about the "how well" an activity was performed. This kind of investigations potentially provides useful information for a large variety of applications, such as, for example, sport training. We finally build a machine learning based classifier with an accurancy of 99.4%.
+
+```{r setup}
+library(knitr)
+library(caret)
+library(ggplot2)
+
+echo = TRUE  # Always make code visible
+
+```
+
+## Data taking and processing
+In this research we use data[1] from accelerometers on the belt, forearm, arm, and dumbell of 6 participants into the study. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.
+
+First of all we download the data file and take a fast look to the data structure.
+
+```{r cache = TRUE}
+datatraining <- read.csv("data/pml-training.csv")
+str(datatraining)
+
+```
+
+As you can see we have 19622 observables and 160 variables. The number of features is to high, we need to clean and pre-process the data to create a good classifier.
+
+### Data partitioning for training and testing samples creation
+In order to build the classifier we need to divide the data in two samples: training (70%) and testing (30%) to perform cross validation after fitting model.
+
+```{r}
+set.seed(23274) # For reproducibile purpose
+intrain <- createDataPartition(y=datatraining$classe, p=0.7, list=FALSE)
+training <- datatraining[intrain,] 
+testing <- datatraining[-intrain,] 
+dim(training)
+dim(testing)
+
+```
+
+With a fast look at the variables types and values, we see that the first 7 columns are Factors/strings not important for classification. Furthermore, there are a lot of variables not directly measured, but derived from measurements so higly correlated. 
+Considering that correlated variables could strongly affect the accurancy of classification, we decide to remove them.
+
+```{r}
+subdatatraining <-training[, 8:159]
+subdatatraining <- subdatatraining[,-grep("^var|^avg|^stddev|^min|^max|^ampl|^skew|^kurt", colnames(subdatatraining))]
+
+```
+Finally we need to reshape a little bit the data sample to include the outcome variable *classe* as first column.
+
+```{r}
+classe <- training[, 160]
+finaltrainingdata <- cbind(classe, subdatatraining)
+str(finaltrainingdata)
+
+```
+
+We have to do excactly the same cleaning steps on the testing sample.
+
+```{r}
+subdatatesting <-testing[, 8:159]
+subdatatesting <- subdatatesting[,-grep("^var|^avg|^stddev|^min|^max|^ampl|^skew|^kurt", colnames(subdatatesting))]
+classe <- testing[, 160]
+finaldatatesting <- cbind(classe, subdatatesting)
+str(finaldatatesting)
+
+```
+
+## Fitting the Model
+For this kind of problems, non linear multi-class supervised learning, one of the most effective and powerfull method, among the most commonly used, is Random Forest. Let build it.
+
+```{r cache = TRUE}
+modelfitRFnopca <-train(finaltrainingdata$classe ~ ., method="rf", data=finaltrainingdata)
+modelfitRFnopca
+
+```
+
+As you can see the model uses all the 52 observables for predictions and the default choice for intrinsic resampling and validation is bootstrapping with 25 samples.
+
+### Model Testing
+Now we have to test this model over the cross validation data sample to evaluate the accurancy.
+
+```{r}
+modelpredictionTeS <- predict(modelfitRFnopca, newdata = finaldatatesting)
+accuracy <- confusionMatrix(modelpredictionTeS, finaldatatesting$classe)
+print(accuracy)
+
+```
+So, the model is quite accurate: 99.4% and the the out-of-sample error could be estimated by
+
+```{r}
+table(finaldatatesting$classe, modelpredictionTeS)
+nright = table(modelpredictionTeS == finaldatatesting$classe)
+oose = as.vector(100 * (1-nright["TRUE"] / sum(nright)))
+oose
+
+```
+
+so out-of-sample error = 0.63%. Great results, even though this model requires a significant computational effort and time consuming.
+
+### Model Reviewing
+In order to speed up the fitting procedure we try to reduce the numbers of variables used for prediction with tha PCA techinique of dimensionality reduction.
+So, before fitting we pre-process the data to reduce the number of features.
+
+```{r cache = TRUE}
+pca <- preProcess(finaltrainingdata[, -1], method = "pca",thresh = 0.80, pcaComp = NULL,na.remove = TRUE)
+pca
+traineddata <- predict(pca, finaltrainingdata[, -1])
+
+```
+Now we apply the fitting procedure
+
+```{r cache = TRUE}
+modelfitRFwithpca <-train(finaltrainingdata$classe ~ ., method="rf", data=traineddata)
+modelfitRFwithpca
+
+```
+
+and check the accurancy on the testing data
+
+```{r}
+testeddata <- predict(pca, finaldatatesting[, -1])
+confusionMatrix(finaldatatesting$classe, predict(modelfitRFwithpca, testeddata))
+
+```
+
+As you can see from the above statistic the application of PCA decreases a little bit the accurancy, even if the now the model fitting time is considerably reduced.
+
+## Results
+The Random Forest clearly performs better without PCA, approaching 99.4% accuracy so we select this model and apply it to the original test data set preprocessed exactly as the training data sample.
+
+```{r}
+datatobepredicted <- read.csv("data/pml-testing.csv")
+subdatatobepredicted <-datatobepredicted[, 8:159]
+subdatatobepredicted <- subdatatobepredicted[,-grep("^var|^avg|^stddev|^min|^max|^ampl|^skew|^kurt", colnames(subdatatobepredicted))]
+
+results <- predict(modelfitRFnopca, newdata=subdatatobepredicted)
+results <- as.character(results)
+results
+
+```
+
+## Conclusion
+In this analysis we build a classification model for HAR data analysis using the Random Forest algorithm. 
+We found this model reachs an accuracy of 99.4% for the out-of-sample data set. Using this model, we were able to correctly classify all twenty values from the test data set.
+
+## References
+[1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
