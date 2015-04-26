@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ## Abstract
-We propose an analysis of Human Activity Recognition (HAR) data about the "how well" an activity was performed. This kind of investigations potentially provides useful information for a large variety of applications, such as, for example, sport training. We finally build a machine learning based classifier with an accurancy of 99.4%.
+We propose an analysis of Human Activity Recognition (HAR) data about the "how well" an activity was performed. This kind of investigations potentially provides useful information for a large variety of applications, such as, sport training. We finally build a machine learning based classifier with an accurancy of 99.4%.
 
 ```{r setup}
 library(knitr)
@@ -104,6 +104,35 @@ oose
 ```
 
 so out-of-sample error = 0.63%. Great results, even though this model requires a significant computational effort and time consuming.
+
+We can visualize the classifier results on the cross-validation sample plotting a normalized confusion matrix.
+
+```{r confusionmatrix, fig.height= 2.5, fig.width= 5}
+
+accuracy <- confusionMatrix(modelpredictionTeS, finaldatatesting$classe)
+confusion = as.data.frame(table(finaldatatesting$classe, modelpredictionTeS))
+names(confusion) = c("Actual","Predicted","Freq")
+
+actual = as.data.frame(table(finaldatatesting$classe))
+names(actual) = c("Actual","ActualFreq")
+
+confusion = merge(confusion, actual, by=c("Actual"))
+confusion$Percent = confusion$Freq/confusion$ActualFreq*100
+
+tile <- ggplot() +
+        geom_tile(aes(x=Predicted, y=Actual,fill=Percent),data=confusion, color="black",size=0.1) +
+        labs(x="Predicted class",y="Actual class") + ggtitle("Normalized validation confusion matrix")
+tile = tile + 
+        geom_text(aes(x=Predicted,y=Actual, label=sprintf("%.1f", Percent)),data=confusion, size=3, colour="black") +
+        scale_fill_gradient(low="light blue",high="blue")         
+
+tile = tile + 
+        geom_tile(aes(x=Predicted,y=Actual),data=subset(confusion, as.character(Actual)==as.character(Predicted)), color="black",size=0.3, fill="black", alpha=0) 
+
+tile
+
+```
+
 
 ### Model Reviewing
 In order to speed up the fitting procedure we try to reduce the numbers of variables used for prediction with tha PCA techinique of dimensionality reduction.
